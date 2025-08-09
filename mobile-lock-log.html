@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Mobile Lock — Local PIN Log</title>
+  <style>
+    :root{--bg:#000;--card:rgba(255,255,255,0.06);--dot:#6b7280;--dotfilled:#fff}
+    body{margin:0;height:100vh;background:var(--bg);color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:18px 12px;box-sizing:border-box}
+    .header{width:100%;max-width:420px;text-align:center;margin-top:18px}
+    h1{font-size:20px;margin:0 0 6px}
+    .card{width:100%;max-width:420px;background:var(--card);padding:18px;border-radius:14px;box-sizing:border-box}
+    .dots{display:flex;justify-content:center;margin:12px 0}
+    .dot{width:14px;height:14px;border-radius:50%;background:var(--dot);margin:0 8px;transition:background .12s}
+    .dot.filled{background:var(--dotfilled)}
+    .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0}
+    .key{aspect-ratio:1/1;background:rgba(255,255,255,0.06);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;user-select:none;touch-action:manipulation}
+    .key:active{transform:scale(.98)}
+    .controls{display:flex;gap:8px;justify-content:center;margin-top:8px}
+    .btn{padding:10px 14px;border-radius:10px;background:#2563eb;color:#fff;font-weight:600;border:none;min-width:80px}
+    .btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.08)}
+    .log-title{margin-top:14px;font-weight:600;font-size:14px}
+    .log{max-height:220px;overflow:auto;margin-top:8px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.03);font-size:13px}
+    .log-item{padding:6px 8px;border-bottom:1px dashed rgba(255,255,255,0.03);display:flex;justify-content:space-between;gap:8px}
+    .time{color:#9ca3af;font-size:12px}
+    .small{font-size:12px;color:#cbd5e1;margin-top:8px;text-align:center}
+    #status{margin-top:10px;text-align:center;font-weight:700}
+    @media(min-width:520px){body{justify-content:center}}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Enter 4-Digit PIN</h1>
+  </div>
+
+  <div class="card">
+    <div class="dots" id="dots">
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+    </div>
+
+    <div class="keypad" id="keypad">
+      <div class="key" data-key="1">1</div>
+      <div class="key" data-key="2">2</div>
+      <div class="key" data-key="3">3</div>
+      <div class="key" data-key="4">4</div>
+      <div class="key" data-key="5">5</div>
+      <div class="key" data-key="6">6</div>
+      <div class="key" data-key="7">7</div>
+      <div class="key" data-key="8">8</div>
+      <div class="key" data-key="9">9</div>
+      <div class="key" data-key="back">←</div>
+      <div class="key" data-key="0">0</div>
+      <div class="key" data-key="ok">✔</div>
+    </div>
+
+    <div class="controls">
+      <button class="btn secondary" id="clearPin">Clear</button>
+      <button class="btn" id="submitPin">Submit</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div class="log-title">Local PIN Log</div>
+    <div class="log" id="log"></div>
+    <div style="display:flex;justify-content:center;margin-top:10px">
+      <button class="btn secondary" id="clearLog">Clear Logs</button>
+    </div>
+  </div>
+
+  <script>
+    // Local-only PIN logger for demo
+    const dots = Array.from(document.querySelectorAll('.dot'));
+    const keys = document.getElementById('keypad');
+    const logEl = document.getElementById('log');
+    const submitBtn = document.getElementById('submitPin');
+    const clearPinBtn = document.getElementById('clearPin');
+    const clearLogBtn = document.getElementById('clearLog');
+    const statusEl = document.getElementById('status');
+
+    let entered = "";
+    const MAX = 4;
+    const STORAGE_KEY = "mobile_lock_demo_logs_v1";
+
+    function updateDots(){
+      dots.forEach((d,i)=> d.classList.toggle('filled', i < entered.length));
+    }
+
+    function loadLogs(){
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch(e){ return []; }
+    }
+
+    function saveLogs(logs){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+    }
+
+    function renderLogs(){
+      const logs = loadLogs();
+      if(logs.length === 0){
+        logEl.innerHTML = "<div style='color:#9ca3af;padding:8px;text-align:center'>No entries yet</div>";
+        return;
+      }
+      logEl.innerHTML = "";
+      logs.slice().reverse().forEach(item=>{
+        const div = document.createElement('div');
+        div.className = "log-item";
+        div.innerHTML = "<div><strong>"+escapeHtml(item.pin)+"</strong><div class='time'>"+escapeHtml(item.time)+"</div></div>";
+        logEl.appendChild(div);
+      });
+    }
+
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
+    }
+
+    keys.addEventListener('click', e=>{
+      const k = e.target.dataset.key;
+      if(!k) return;
+      if(k === 'back'){
+        entered = entered.slice(0,-1);
+        updateDots();
+        return;
+      }
+      if(k === 'ok'){
+        doSubmit();
+        return;
+      }
+      if(entered.length < MAX){
+        entered += k;
+        updateDots();
+      }
+    });
+
+    submitBtn.addEventListener('click', doSubmit);
+    clearPinBtn.addEventListener('click', ()=>{
+      entered = "";
+      updateDots();
+    });
+
+    clearLogBtn.addEventListener('click', ()=>{
+      if(confirm("Clear all saved logs from this device?")){
+        localStorage.removeItem(STORAGE_KEY);
+        renderLogs();
+      }
+    });
+
+    function doSubmit(){
+      if(entered.length !== MAX){
+        statusEl.textContent = "Please enter 4 digits";
+        statusEl.style.color = "#f87171";
+        setTimeout(()=> statusEl.textContent = "", 1500);
+        return;
+      }
+      const timestamp = new Date().toLocaleString();
+      // Save to local logs (visible on screen)
+      const logs = loadLogs();
+      logs.push({pin: entered, time: timestamp});
+      saveLogs(logs);
+      renderLogs();
+      // show success message
+      statusEl.textContent = "Successful";
+      statusEl.style.color = "#84cc16";
+      // clear entered PIN
+      entered = "";
+      updateDots();
+      // clear success message after 2 seconds
+      setTimeout(()=> statusEl.textContent = "", 2000);
+    }
+
+    // init
+    renderLogs();
+    updateDots();
+  </script>
+</body>
+</html>
